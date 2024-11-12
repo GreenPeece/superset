@@ -26,10 +26,13 @@ from superset.commands.chart.exceptions import ChartNotFoundError
 from superset.daos.chart import ChartDAO
 from superset.commands.dataset.export import ExportDatasetsCommand
 from superset.commands.export.models import ExportModelsCommand
+from superset.commands.tag.export import ExportTagsCommand
 from superset.models.slice import Slice
+from superset.tags.models import TagType
 from superset.utils.dict_import_export import EXPORT_VERSION
 from superset.utils.file import get_filename
 from superset.utils import json
+from superset.extensions import feature_flag_manager
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +74,24 @@ class ExportChartsCommand(ExportModelsCommand):
         if model.table:
             payload["dataset_uuid"] = str(model.table.uuid)
 
+        # Fetch tags from the database if TAGGING_SYSTEM is enabled
+        if feature_flag_manager.is_feature_enabled("TAGGING_SYSTEM"):
+            tags = (
+                model.tags if hasattr(model, "tags") else []
+            )
+            payload["tags"] = [tag.name for tag in tags if tag.type == TagType.custom]
         file_content = yaml.safe_dump(payload, sort_keys=False)
         return file_content
 
-    @staticmethod
+    # Add a parameter for should_export_tags in the constructor
+    def __init__(self, chart_ids, should_export_tags=True, export_related=True):
+        super().__init__(chart_ids)
+        self.should_export_tags = should_export_tags
+        self.export_related = export_related
+        
+    # Change to an instance method
     def _export(
-        model: Slice, export_related: bool = True
+        self, model: Slice, export_related: bool = True
     ) -> Iterator[tuple[str, Callable[[], str]]]:
         yield (
             ExportChartsCommand._file_name(model),
@@ -85,3 +100,8 @@ class ExportChartsCommand(ExportModelsCommand):
 
         if model.table and export_related:
             yield from ExportDatasetsCommand([model.table.id]).run()
+
+
+        if export_related and self.should_export_tags and feature_flag_manager.is_feature_enabled("TAGGING_SYSTEM"):
+            chart_id = model.id
+            yield from ExportTagsCommand._export(chart_ids=[chart_id])
