@@ -42,7 +42,7 @@ under the License.
   />
 </picture>
 
-A modern, enterprise-ready business intelligence web application.
+A modern, enterprise-ready business intelligence web application..
 
 [**Why Superset?**](#why-superset) |
 [**Supported Databases**](#supported-databases) |
